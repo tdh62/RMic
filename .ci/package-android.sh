@@ -80,6 +80,7 @@ for variant in "${variants[@]}"; do
   mkdir -p "$temporary/$name"
   cp "dist/$name.apk" "$temporary/$name/"
   cp README.md "$temporary/$name/README.md"
+  cp LICENSE "$temporary/$name/LICENSE"
   cp android/THIRD-PARTY-NOTICES.md "$temporary/$name/THIRD-PARTY-NOTICES.md"
   printf 'Version: %s\nCommit: %s\nVariant: %s\nSigning: %s\nBuilt: %s\n' \
     "$version" "$commit" "$variant" "$signing" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$temporary/$name/BUILDINFO.txt"

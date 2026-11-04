@@ -46,6 +46,7 @@ fi
 cp .ci/macos/Start-RMic.command "$package/Start-RMic.command"
 chmod +x "$package/Start-RMic.command"
 cp README.md "$package/"
+cp LICENSE "$package/LICENSE"
 cp "$(go env GOROOT)/LICENSE" "$package/THIRD-PARTY-NOTICES/Go-LICENSE"
 license=$(find -H "$opus_prefix" -maxdepth 3 -type f \( -iname COPYING -o -iname LICENSE \) -print -quit)
 [[ -n $license ]] || { printf 'Cannot locate Homebrew Opus license\n' >&2; exit 1; }

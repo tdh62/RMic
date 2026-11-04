@@ -99,6 +99,11 @@ Windows 默认保存在程序同级的 `rmic-data/`。目录不可写时会提�
 
 ## 驱动与许可
 
+RMic 项目自身的代码与文档采用 [MIT License](LICENSE)。
+
+第三方驱动、依赖和资源仍遵循各自原始许可。
+
+
 基础 VB-CABLE 由 Vincent Burel / VB-Audio 提供，属于 Donationware，欢迎通过 [官方网站](https://vb-audio.com/Cable/) 支持作者。完整版权、许可、安装说明和免责声明保留在原版 ZIP 的 `readme.txt` 中。
 
 

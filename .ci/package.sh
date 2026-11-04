@@ -54,6 +54,7 @@ if [[ $target_os == windows ]]; then
 fi
 printf 'Collecting package files and third-party notices\n'
 cp README.md "$package/README.md"
+cp LICENSE "$package/LICENSE"
 printf 'Version: %s\nCommit: %s\nBuilt: %s\nTarget: %s/%s\nToolchain: %s\n' \
   "$version" "$commit" "$build_date" "$target_os" "$target_arch" "$(go version)" > "$package/BUILDINFO.txt"
 cp "$(go env GOROOT)/LICENSE" "$package/THIRD-PARTY-NOTICES/Go-LICENSE"
