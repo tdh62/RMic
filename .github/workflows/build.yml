@@ -7,17 +7,62 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a Release after all builds succeed
+        type: boolean
+        default: true
+      version:
+        description: Release tag (e.g. v0.1 or v0.2-beta.1)
+        type: string
+        default: v0.1
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  group: build-${{ github.workflow }}-${{ github.ref }}-${{ inputs.publish_release && inputs.version || 'build' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  prepare:
+    name: Validate version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - name: Resolve build and release version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          MANUAL_PUBLISH: ${{ inputs.publish_release }}
+          MANUAL_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish=false
+          version="dev-${GITHUB_SHA:0:8}"
+          if [[ "$EVENT_NAME" == push && "$REF_TYPE" == tag ]]; then
+            publish=true
+            version=$REF_NAME
+          elif [[ "$EVENT_NAME" == workflow_dispatch && "$MANUAL_PUBLISH" == true ]]; then
+            publish=true
+            version=$MANUAL_VERSION
+          fi
+          if [[ "$publish" == true && ! "$version" =~ ^v[0-9][A-Za-z0-9._+-]{0,78}$ ]]; then
+            echo 'Release version must start with v and a digit and use only letters, digits, dot, underscore, plus or hyphen (max 80 characters).' >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
   desktop:
     name: ${{ matrix.target }}-${{ matrix.arch }}
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -38,19 +83,13 @@ jobs:
       CGO_ENABLED: '1'
       GOFLAGS: -mod=readonly
       GOPROXY: https://goproxy.cn|direct
+      RMIC_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Set package version
-        shell: bash
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            echo "RMIC_VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
-          else
-            echo "RMIC_VERSION=dev-${GITHUB_SHA:0:8}" >> "$GITHUB_ENV"
-          fi
+      - name: Configure build
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Prepare compiler and audio dependencies
         run: bash .ci/setup.sh '${{ matrix.target }}'
       - name: Prepare GUI dependencies
@@ -74,24 +113,19 @@ jobs:
 
   android:
     name: Android
+    needs: prepare
     runs-on: ubuntu-24.04
     container: golang:1.26-bookworm
     timeout-minutes: 45
     env:
       ANDROID_HOME: /opt/android-sdk
+      RMIC_VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Set package version
-        shell: bash
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            echo "RMIC_VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
-          else
-            echo "RMIC_VERSION=dev-${GITHUB_SHA:0:8}" >> "$GITHUB_ENV"
-          fi
+      - name: Configure build
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Prepare Java and Android SDK
         run: bash .ci/setup-android.sh
       - name: Test, lint and package (PR)
@@ -113,9 +147,9 @@ jobs:
           retention-days: 14
 
   release:
-    name: Publish tagged release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [desktop, android]
+    name: Publish release
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, desktop, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -137,10 +171,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.version }}
+          RELEASE_COMMIT: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
+          # Create a missing manual tag only after all builds succeed.
+          tag_sha=$(gh api "repos/$GH_REPO/git/matching-refs/tags/$RELEASE_TAG" \
+            --jq '.[] | select(.ref == "refs/tags/" + env.RELEASE_TAG) | .object.sha')
+          if [[ -z "$tag_sha" ]]; then
+            gh api --method POST "repos/$GH_REPO/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_COMMIT" >/dev/null
+          fi
+          resolved_commit=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)
+          if [[ "$resolved_commit" != "$RELEASE_COMMIT" ]]; then
+            echo "Tag $RELEASE_TAG points to another commit; run on that tag or use a new version." >&2
+            exit 1
+          fi
           prerelease=()
           if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=(--prerelease); fi
           # Upload to a draft first; failed uploads never publish a partial release.

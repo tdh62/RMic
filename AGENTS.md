@@ -4,7 +4,7 @@
 
 - GitHub 公开仓库使用 `.github/workflows/build.yml`，监听 main push、pull_request、v* tag push 与手动触发。复用 `.ci/` 脚本和现成 Go 环境，不引入自定义镜像。
 - 联合构建 Linux amd64、Linux arm64、Windows amd64 的 TUI/GUI 与 Android。Linux 使用原生对应架构 runner；Windows 使用 MinGW-w64 和静态 Opus 交叉编译。
-- 普通提交和 PR 仅上传 Actions artifacts；v* 标签在所有平台成功后验证 SHA-256 并发布 Release，带连字符的标签标记预发布。
+- 普通提交和 PR 仅上传 Actions artifacts；v* 标签或手动启用 publish_release 时，在所有平台成功后验证 SHA-256 并发布 Release。手动发布填写 version，缺失的标签在构建完成后创建；已有标签必须对应本次构建提交，不覆盖已发布版本。带连字符的标签标记预发布。
 - Android 签名仅从 GitHub Secrets 读取，PR 不使用签名凭据；无配置时明确输出未签名 Release。
 - 如实区分本地验证、工作流触发成功和远端构建通过，不得混淆。
 - 公开分支不跟踪 `docs/`，用户说明统一在 README.md，各平台包附同一说明。
