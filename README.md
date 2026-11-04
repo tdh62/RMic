@@ -101,6 +101,14 @@ Windows 默认保存在程序同级的 `rmic-data/`。目录不可写时会提�
 
 基础 VB-CABLE 由 Vincent Burel / VB-Audio 提供，属于 Donationware，欢迎通过 [官方网站](https://vb-audio.com/Cable/) 支持作者。完整版权、许可、安装说明和免责声明保留在原版 ZIP 的 `readme.txt` 中。
 
+
+# 链接
+
+- [LINUX DO](https://linux.do)
+- [VB-CABLE Virtual Audio Device](https://vb-audio.com/Cable/)
+
+# 其他
+
 <details>
 <summary>macOS 使用说明（未测试）</summary>
 
