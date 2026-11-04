@@ -12,6 +12,8 @@ RMic 在电脑上运行，手机通过浏览器或 Android 客户端连接，适
 
 ## 版本说明
 
+当前 GitHub 版本：**v0.1**。正式版本发布后可从 [GitHub Releases](https://github.com/tdh62/RMic/releases/tag/v0.1) 下载；构建未完成时请查看 [Actions](https://github.com/tdh62/RMic/actions)。
+
 | 文件名包含 | 用途 |
 | --- | --- |
 | `rmic-gui-…-windows-amd64.zip` | Windows 图形界面版，推荐普通用户使用 |
