@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101b20">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>RMic · 双向音频</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/style.css">
+<script src="/pcm.js" defer></script>
+<script src="/shortcuts.js" defer></script>
+<script src="/app.js" defer></script>
+<script src="/mobile.js" defer></script>
+<script src="/display.js" defer></script>
+</head>
+<body>
+<main>
+<header><h1 class="brand">R<span>Mic</span></h1><span id="connection-badge" class="badge">待连接</span></header>
+<section id="pairing" class="card" hidden aria-labelledby="pair-title">
+  <h2 id="pair-title">连接电脑</h2>
+  <label for="device-name">设备名称</label><input type="text" id="device-name" maxlength="40" autocomplete="nickname" placeholder="例如：我的手机">
+  <label class="switch"><span>记住设备</span><input type="checkbox" id="remember-device" checked></label>
+  <button id="request-pair" class="primary">申请配对</button>
+  <p id="pair-progress" class="hint" aria-live="polite">申请后，在电脑按 p 核对并允许。</p><strong id="pair-code" hidden></strong>
+  <details><summary>使用连接凭证</summary><div class="settings"><label for="token">电脑端配对凭证</label><input id="token" autocomplete="off" spellcheck="false"><button id="save-token" class="secondary">使用凭证</button></div></details>
+</section>
+<section class="card session" aria-label="音频会话">
+  <div class="section-heading"><span class="eyebrow">选择传音方向</span><span class="hint">保持页面在前台</span></div>
+  <div class="mode-picker">
+    <label class="sr-only" for="mode">工作模式</label><select id="mode"><option value="mic">手机麦克风 → 电脑</option><option value="playback">电脑声音 → 手机</option><option value="duplex">双向传音</option></select>
+    <div id="mode-cards" class="mode-cards" role="group" aria-label="传音方向快捷选择" hidden>
+      <button class="mode-card" data-mode="mic" type="button" aria-pressed="true"><span aria-hidden="true">↗</span><strong>麦克风</strong><small>手机 → 电脑</small></button>
+      <button class="mode-card" data-mode="playback" type="button" aria-pressed="false"><span aria-hidden="true">↙</span><strong>听电脑</strong><small>电脑 → 手机</small></button>
+      <button class="mode-card" data-mode="duplex" type="button" aria-pressed="false"><span aria-hidden="true">⇄</span><strong>双向</strong><small>手机 ⇄ 电脑</small></button>
+    </div>
+  </div>
+  <p id="duplex-hint" class="hint" hidden>建议戴耳机，避免回声。</p>
+  <div class="session-status"><div class="status-row"><span id="dot" class="dot"></span><strong id="status" role="status" aria-live="polite">尚未连接</strong><span id="timer" role="timer" aria-live="off" aria-label="本次连接时长">00:00</span></div><p id="detail"></p></div>
+  <div id="microphone-meter"><div class="meter-caption"><span>手机麦克风</span><span id="mic-indicator">等待连接</span></div><div class="meter" role="meter" aria-label="麦克风音量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="level"></div></div></div>
+  <div class="actions"><button id="start" class="primary">开始传音 <span aria-hidden="true">↗</span></button><button id="mute" class="secondary" disabled aria-pressed="false">静音</button></div>
+  <button id="stop" class="stop" hidden>断开连接</button>
+  <p id="error" class="error" role="alert" hidden></p>
+  <div class="display-actions"><button id="black-screen" class="quiet" disabled title="保持传音，点按屏幕退出；请勿按电源键锁屏">黑屏省电</button><button id="install-app" class="quiet" hidden>安装到手机</button></div>
+  <p id="display-hint" class="hint" aria-live="polite" hidden></p>
+</section>
+<section id="shortcut-controls" class="card" hidden aria-label="电脑快捷按钮">
+  <div class="section-heading"><h2>电脑快捷按钮</h2><button id="shortcut-release" class="quiet" type="button">停止并释放全部</button></div>
+  <div id="shortcut-buttons" class="shortcut-buttons"></div>
+  <p id="shortcut-state" class="hint" role="status" aria-live="polite">连接音频后可使用</p>
+</section>
+<section id="playback-controls" class="card settings" hidden aria-label="播放控制">
+  <div class="section-heading"><label id="volume-label" for="playback-volume">手机播放音量</label><output id="volume-value" for="playback-volume">35%</output></div><input id="playback-volume" type="range" min="0" max="1" step="0.05" value="0.35">
+  <div class="playback-actions"><button id="playback-mute" class="secondary" aria-pressed="false">播放静音</button><button id="resume-playback" class="primary" hidden>启用播放</button></div>
+  <audio id="remote-audio" autoplay playsinline></audio>
+</section>
+<details class="card" id="audio-settings">
+  <summary>音质与连接<span id="settings-summary" class="summary-value">均衡</span></summary>
+  <div class="settings">
+    <p id="mode-hint" class="hint">可用模式由电脑配置决定。</p>
+    <label for="quality">音质与网络</label><select id="quality"><option value="voice">清晰语音</option><option value="balanced" selected>均衡</option><option value="music">高音质</option><option value="weak">弱网络</option><option value="ultra" disabled>Ultra · 仅电脑播放</option></select>
+    <label for="connection">连接方式</label><select id="connection"><option value="webrtc">WebRTC</option><option value="ws-pcm">PCM</option></select>
+    <div id="pcm-options" hidden><label for="pcm-compression">PCM 压缩</label><select id="pcm-compression"><option value="none">原始 PCM</option><option value="deflate">DEFLATE · 无损压缩</option></select><label for="pcm-output">PCM 播放声道</label><select id="pcm-output"><option value="native">保持电脑声道布局</option><option value="stereo">立体声下混</option></select><p class="hint">多声道需在电脑配置中选择 6 或 8 声道，并使用对应设备。手机输出不支持时请选择下混。</p></div>
+    <label for="send-buffer">电脑发送缓冲（ms）</label><input id="send-buffer" type="number" inputmode="numeric" min="10" max="200" step="10" value="20">
+    <label for="play-buffer">手机播放缓冲</label><select id="play-buffer"><option value="0">自动</option><option value="40">40 ms</option><option value="80">80 ms</option><option value="120">120 ms</option><option value="240">240 ms</option><option value="500">500 ms</option><option value="1000">1000 ms</option><option value="2000">2000 ms</option></select>
+    <p class="hint">更改后自动重连。播放断续时可增大缓冲。</p>
+    <details><summary>参数说明</summary><p id="quality-hint" class="hint"></p><p class="hint">缓冲值不代表实际延迟。PCM 自动缓冲从 120 ms 开始调整；WebRTC 由浏览器调节。手机实际音量也可用音量键调整，设备变化后需手动恢复播放。</p></details>
+  </div>
+</details>
+<details id="microphone-controls" class="card">
+  <summary>麦克风设置</summary>
+  <div class="settings"><label for="microphone">麦克风</label><select id="microphone"><option value="">系统默认麦克风</option></select><label class="switch"><span>降噪</span><input type="checkbox" id="noise" checked></label><label class="switch"><span>回声消除</span><input type="checkbox" id="echo" checked></label><p class="hint">下次连接生效。</p></div>
+</details>
+<details id="directions" class="card" hidden><summary>连接详情</summary><div class="diagnostics"><p>手机 → 电脑：<strong id="receive-state">未启用</strong></p><p>电脑 → 手机：<strong id="send-state">未启用</strong></p><p id="buffer-info" class="hint"></p><p id="network-info" class="hint">网络统计等待连接</p></div></details>
+<details id="certificate-help" class="card"><summary>连接与证书帮助</summary><p class="hint">切换电脑 IP 或证书更新后，如果无法连接，可重新打开当前地址的证书确认页面。在浏览器中核对地址，选择“高级”并继续访问，然后返回传音页面。每个 IP 地址可能需要分别确认；若浏览器未提示且仍连接失败，请检查网络和电脑端是否运行。</p><button id="trust-certificate" class="secondary" type="button">重新信任证书</button></details>
+<details id="authorization" class="card" hidden><summary>设备授权</summary><p id="auth-state" class="hint"></p><button id="forget-device" class="secondary">忘记此电脑的授权</button></details>
+</main>
+<dialog id="black-overlay" aria-label="黑屏省电模式"><button id="exit-black-screen" aria-label="退出黑屏省电模式，点击任意位置恢复"></button></dialog>
+</body>
+</html>

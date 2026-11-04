@@ -1,0 +1,13 @@
+{
+  "name": "rmic-browser-checks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node shortcuts.mjs && node mobile.mjs && node pwa.mjs && node pcm-worklet.mjs && node pcm-codecs.mjs && node pcm-playback.mjs && node multichannel.mjs && node smoke.mjs && node pairing.mjs && node lifecycle.mjs",
+    "test:pwa": "node pwa.mjs",
+    "test:pcm": "node pcm-worklet.mjs && node pcm-codecs.mjs && node pcm-playback.mjs",
+    "test:lifecycle": "node lifecycle.mjs",
+    "test:mobile": "node mobile.mjs"
+  },
+  "devDependencies": { "playwright": "1.64.1" }
+}

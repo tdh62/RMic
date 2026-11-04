@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=RMic GUI
+Comment=Local bidirectional audio and device pairing
+Exec=rmic-gui
+Icon=rmic-gui
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupNotify=true

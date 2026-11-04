@@ -1,0 +1,158 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  desktop:
+    name: ${{ matrix.target }}-${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux
+            arch: amd64
+            runner: ubuntu-24.04
+          - target: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - target: windows
+            arch: amd64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    container: golang:1.26-bookworm
+    timeout-minutes: 60
+    env:
+      CGO_ENABLED: '1'
+      GOFLAGS: -mod=readonly
+      GOPROXY: https://goproxy.cn|direct
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set package version
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            echo "RMIC_VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            echo "RMIC_VERSION=dev-${GITHUB_SHA:0:8}" >> "$GITHUB_ENV"
+          fi
+      - name: Prepare compiler and audio dependencies
+        run: bash .ci/setup.sh '${{ matrix.target }}'
+      - name: Prepare GUI dependencies
+        run: bash .ci/setup-gui.sh '${{ matrix.target }}'
+      - name: Native audio and race tests
+        if: matrix.target == 'linux'
+        run: bash .ci/check.sh
+      - name: GUI checks
+        if: matrix.target == 'linux'
+        run: bash .ci/check-gui.sh
+      - name: Package TUI
+        run: bash .ci/package.sh '${{ matrix.target }}' '${{ matrix.arch }}' tui
+      - name: Package GUI
+        run: bash .ci/package.sh '${{ matrix.target }}' '${{ matrix.arch }}' gui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.target }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    name: Android
+    runs-on: ubuntu-24.04
+    container: golang:1.26-bookworm
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /opt/android-sdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set package version
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            echo "RMIC_VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            echo "RMIC_VERSION=dev-${GITHUB_SHA:0:8}" >> "$GITHUB_ENV"
+          fi
+      - name: Prepare Java and Android SDK
+        run: bash .ci/setup-android.sh
+      - name: Test, lint and package (PR)
+        if: github.event_name == 'pull_request'
+        run: bash .ci/package-android.sh all
+      - name: Test, lint and package
+        if: github.event_name != 'pull_request'
+        env:
+          RMIC_ANDROID_KEYSTORE_BASE64: ${{ secrets.RMIC_ANDROID_KEYSTORE_BASE64 }}
+          RMIC_ANDROID_STORE_PASSWORD: ${{ secrets.RMIC_ANDROID_STORE_PASSWORD }}
+          RMIC_ANDROID_KEY_ALIAS: ${{ secrets.RMIC_ANDROID_KEY_ALIAS }}
+          RMIC_ANDROID_KEY_PASSWORD: ${{ secrets.RMIC_ANDROID_KEY_PASSWORD }}
+        run: bash .ci/package-android.sh all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-android
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish tagged release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+      - name: Verify checksums
+        working-directory: dist
+        run: |
+          shopt -s nullglob
+          checksums=(*.sha256)
+          (( ${#checksums[@]} > 0 ))
+          sha256sum -c "${checksums[@]}"
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prerelease=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          # Upload to a draft first; failed uploads never publish a partial release.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            [[ $(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft) == true ]] || {
+              echo 'Release already published; use a new version tag.' >&2
+              exit 1
+            }
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft "${prerelease[@]}" \
+              --title "RMic $RELEASE_TAG" \
+              --notes 'Windows/Linux provide separate GUI and TUI packages. Windows includes only the unchanged base VB-CABLE ZIP for manual installation. Android APKs marked release-unsigned require signing; debug builds are for testing. SHA-256 files accompany all packages. See README for setup and platform validation limits.'
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false "${prerelease[@]}"
