@@ -155,6 +155,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           pattern: packages-*
@@ -174,32 +177,4 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.version }}
           RELEASE_COMMIT: ${{ github.sha }}
         shell: bash
-        run: |
-          set -euo pipefail
-          # Create a missing manual tag only after all builds succeed.
-          tag_sha=$(gh api "repos/$GH_REPO/git/matching-refs/tags/$RELEASE_TAG" \
-            --jq '.[] | select(.ref == "refs/tags/" + env.RELEASE_TAG) | .object.sha')
-          if [[ -z "$tag_sha" ]]; then
-            gh api --method POST "repos/$GH_REPO/git/refs" \
-              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_COMMIT" >/dev/null
-          fi
-          resolved_commit=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)
-          if [[ "$resolved_commit" != "$RELEASE_COMMIT" ]]; then
-            echo "Tag $RELEASE_TAG points to another commit; run on that tag or use a new version." >&2
-            exit 1
-          fi
-          prerelease=()
-          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=(--prerelease); fi
-          # Upload to a draft first; failed uploads never publish a partial release.
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            [[ $(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft) == true ]] || {
-              echo 'Release already published; use a new version tag.' >&2
-              exit 1
-            }
-          else
-            gh release create "$RELEASE_TAG" --verify-tag --draft "${prerelease[@]}" \
-              --title "RMic $RELEASE_TAG" \
-              --notes 'Windows/Linux provide separate GUI and TUI packages. Windows includes only the unchanged base VB-CABLE ZIP for manual installation. Android APKs marked release-unsigned require signing; debug builds are for testing. SHA-256 files accompany all packages. See README for setup and platform validation limits.'
-          fi
-          gh release upload "$RELEASE_TAG" dist/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false "${prerelease[@]}"
+        run: bash .ci/publish-release.sh
